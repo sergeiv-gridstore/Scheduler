@@ -19,6 +19,7 @@ struct PERIODIC_CONTEXT {
 
     PERIODIC_CONTEXT() {
         InitializeCriticalSection(&lock);
+        // come on, initialize other crap in here if you are cpp guy
     };
     ~PERIODIC_CONTEXT() {
         DeleteCriticalSection(&lock);
@@ -26,6 +27,7 @@ struct PERIODIC_CONTEXT {
 
     __int64 get_scheduler_id() {
         int retval = 0;
+        // this critical_section has no effect except for read-write barrier.
         EnterCriticalSection(&lock);
         retval = scheduler_id;
         LeaveCriticalSection(&lock);
@@ -33,13 +35,15 @@ struct PERIODIC_CONTEXT {
     }
 
     void set_scheduler_id(__int64 id) {
+        // this critical_section has no effect except for read-write barrier.
         EnterCriticalSection(&lock);
         scheduler_id = id;
         LeaveCriticalSection(&lock);
     };
 };
 
-
+// the high level design is good. You have a chain of schedule_periodic_workitem() that
+// schedule themselves.
 void schedule_periodic_workitem(void* context) {
     PERIODIC_CONTEXT* periodic_context = (PERIODIC_CONTEXT*)context;
     time_t timer_start = 0;
@@ -63,6 +67,8 @@ void schedule_periodic_workitem(void* context) {
 
     // Clean up the scheduler stuff before assigning a new one.
     release_workitem_handle(periodic_context->get_scheduler_id());
+    // and now you want to cancel it, on another thread. You will use the old ID
+    
 
     // Schedule next execution
     periodic_context->set_scheduler_id(schedule(next_execution, (worker_routine*)&schedule_periodic_workitem, periodic_context));
@@ -117,6 +123,7 @@ periodic_handle schedule_periodic(int period, worker_routine* workitem, void* co
     periodic_context->period = period;
 
     // schedule for execution
+    // wy do you need a cast?
     periodic_context->set_scheduler_id(schedule(time(NULL) + period, (worker_routine*)&schedule_periodic_workitem, periodic_context));
 
     // return handle to caller
