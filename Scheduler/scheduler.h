@@ -2,7 +2,7 @@
 
 #pragma once
 
-typedef void (__stdcall *worker_routine)(void* context);
+typedef void (*worker_routine)(void* context);
 
 //
 // schedules work item to run once at absolute time due. System worker thread will

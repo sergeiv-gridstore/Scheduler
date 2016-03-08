@@ -10,36 +10,52 @@
 #endif
 
 
+void schedule_periodic_workitem(void* context);
+
 struct PERIODIC_CONTEXT {
     CRITICAL_SECTION    lock;
     worker_routine*     user_workitem;
     void*               user_context;
     time_t              period;
-    __int64             scheduler_id;
+    int                 scheduler_id;
 
     PERIODIC_CONTEXT() {
         InitializeCriticalSection(&lock);
-        // come on, initialize other crap in here if you are cpp guy
+        user_workitem = NULL;
+        user_context = NULL;
+        period = 0;
+        scheduler_id = 0;
     };
     ~PERIODIC_CONTEXT() {
         DeleteCriticalSection(&lock);
     }
 
-    __int64 get_scheduler_id() {
+    void schedule_next(__int64 interval, void* context) {
+        EnterCriticalSection(&lock);
+
+        // Clean up the scheduler stuff before assigning a new one.
+        release_workitem_handle(scheduler_id);
+
+        // Schedule next execution
+        // Rom> VS 2015 is reporting some type of casting error of its own.  I tried changing 
+        //      the default calling convention of the whole project to no avail.  At this point,
+        //      I normally monkey with the calling convention of the function/type def prototype 
+        //      itself.  Except, in this case, I was already told I had to use the prototypes 
+        //      that were in place.  I figured the theoretical stuff was the actual problem to 
+        //      solve and worked around the issue by casting the pointer.  I've reverted the 
+        //      code back to original behaviour.
+        scheduler_id = schedule(interval, schedule_periodic_workitem, context);
+
+        LeaveCriticalSection(&lock);
+    }
+
+    int get_scheduler_id() {
         int retval = 0;
-        // this critical_section has no effect except for read-write barrier.
         EnterCriticalSection(&lock);
         retval = scheduler_id;
         LeaveCriticalSection(&lock);
         return retval;
     }
-
-    void set_scheduler_id(__int64 id) {
-        // this critical_section has no effect except for read-write barrier.
-        EnterCriticalSection(&lock);
-        scheduler_id = id;
-        LeaveCriticalSection(&lock);
-    };
 };
 
 // the high level design is good. You have a chain of schedule_periodic_workitem() that
@@ -65,13 +81,8 @@ void schedule_periodic_workitem(void* context) {
         next_execution = periodic_context->period - timer_start % periodic_context->period;
     }
 
-    // Clean up the scheduler stuff before assigning a new one.
-    release_workitem_handle(periodic_context->get_scheduler_id());
-    // and now you want to cancel it, on another thread. You will use the old ID
-    
-
     // Schedule next execution
-    periodic_context->set_scheduler_id(schedule(next_execution, (worker_routine*)&schedule_periodic_workitem, periodic_context));
+    periodic_context->schedule_next(next_execution, periodic_context);
 }
 
 
@@ -124,7 +135,7 @@ periodic_handle schedule_periodic(int period, worker_routine* workitem, void* co
 
     // schedule for execution
     // wy do you need a cast?
-    periodic_context->set_scheduler_id(schedule(time(NULL) + period, (worker_routine*)&schedule_periodic_workitem, periodic_context));
+    periodic_context->schedule_next(time(NULL) + period, periodic_context);
 
     // return handle to caller
     return periodic_context;
