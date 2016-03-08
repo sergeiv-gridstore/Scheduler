@@ -37,22 +37,18 @@ struct PERIODIC_CONTEXT {
         release_workitem_handle(scheduler_id);
 
         // Schedule next execution
-        // Rom> VS 2015 is reporting some type of casting error of its own.  I tried changing 
-        //      the default calling convention of the whole project to no avail.  At this point,
-        //      I normally monkey with the calling convention of the function/type def prototype 
-        //      itself.  Except, in this case, I was already told I had to use the prototypes 
-        //      that were in place.  I figured the theoretical stuff was the actual problem to 
-        //      solve and worked around the issue by casting the pointer.  I've reverted the 
-        //      code back to original behaviour.
         scheduler_id = schedule(interval, schedule_periodic_workitem, context);
 
         LeaveCriticalSection(&lock);
     }
 
-    int get_scheduler_id() {
-        int retval = 0;
+    bool cancel() {
+        bool retval = false;
         EnterCriticalSection(&lock);
-        retval = scheduler_id;
+
+        retval = cancel_scheduled(scheduler_id);
+        release_workitem_handle(scheduler_id);
+
         LeaveCriticalSection(&lock);
         return retval;
     }
@@ -151,14 +147,9 @@ void cancel_periodic(periodic_handle id) {
     PERIODIC_CONTEXT* periodic_context = (PERIODIC_CONTEXT*)id;
 
     // Cancel the scheduled job.
-    // Keep looping until the cancel_scheduled() returns success.  This might
-    // be after a couple of scheduler_id changes depending on the interval and/or
-    // how long it takes the processor to update the cache with the new value.
-    while (!cancel_scheduled(periodic_context->get_scheduler_id())) {
+    // Keep looping until the periodic_context->cancel() returns success.
+    while (!periodic_context->cancel()) {
     }
-
-    // Clean up the scheduler stuff since the caller doesn't know anything about it
-    release_workitem_handle(periodic_context->get_scheduler_id());
 
     // Cleanup our own stuff
     delete periodic_context;
